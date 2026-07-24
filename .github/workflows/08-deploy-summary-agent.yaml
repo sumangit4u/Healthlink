@@ -1,0 +1,70 @@
+# CD - orchestrator (internal). Triggers on services/summary_agent/** or shared/**.
+# Assumes infra already exists (run deploy.ps1 / deploy.sh ONCE first).
+#
+# Required repo secrets: AZURE_CREDENTIALS (SP scoped to healthlink-rg), ACR_NAME.
+name: CD - Deploy summary-agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/summary_agent/**'
+      - 'shared/**'
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: healthlink-rg
+  APP_NAME: healthlink-summary
+  IMAGE_NAME: healthlink-summary
+  DOCKERFILE: services/summary_agent/Dockerfile
+  SMOKE_PORT: "8013"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          missing=0
+          [ -z "${{ secrets.AZURE_CREDENTIALS }}" ] && { echo "::error::Missing AZURE_CREDENTIALS"; missing=1; }
+          [ -z "${{ secrets.ACR_NAME }}" ] && { echo "::error::Missing ACR_NAME"; missing=1; }
+          exit $missing
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build image (context = repo root)
+        run: |
+          docker build -f $DOCKERFILE \
+            -t ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }} \
+            -t ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:latest .
+
+      - name: Smoke-test the image
+        run: |
+          docker run -d --rm --name smoke -p $SMOKE_PORT:$SMOKE_PORT \
+            ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          sleep 5
+          curl -f http://localhost:$SMOKE_PORT/health
+          docker stop smoke
+
+      - name: Push image to ACR
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:latest
+
+      - name: Deploy commit-hash image to Container Apps
+        run: |
+          az containerapp update --name $APP_NAME --resource-group $RESOURCE_GROUP \
+            --image ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+
+      - name: Verify revision (internal - no public endpoint)
+        run: |
+          STATE=$(az containerapp revision list --name $APP_NAME --resource-group $RESOURCE_GROUP \
+            --query "[-1].properties.provisioningState" -o tsv)
+          echo "$APP_NAME latest revision provisioningState: $STATE"
+          [ "$STATE" = "Provisioned" ] || echo "::warning::revision not yet Provisioned (may still be rolling out)"

@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Environment Variables
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# FAISS Index
+data/faiss_index/
+
+# MacOS
+.DS_Store
+
+# MS Office lock/temp files
+~$*
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# Cloud
+credentials.json
+service-account-key.json
+azure-credentials.json

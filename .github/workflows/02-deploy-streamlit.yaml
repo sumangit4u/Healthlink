@@ -1,0 +1,73 @@
+# CD - streamlit frontend. Triggers only on changes under services/streamlit/.
+# Assumes the resource group / ACR / Container Apps already exist (run deploy.ps1
+# or deploy.sh ONCE first).
+#
+# Required repo secrets:
+#   AZURE_CREDENTIALS - `az ad sp create-for-rbac ... --sdk-auth` JSON, scoped to
+#                       resource group healthlink-rg
+#   ACR_NAME          - registry name WITHOUT .azurecr.io (printed by deploy.*)
+name: CD - Deploy streamlit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/streamlit/**'
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: healthlink-rg
+  APP_NAME: healthlink-streamlit
+  IMAGE_NAME: healthlink-streamlit
+  DOCKERFILE: services/streamlit/Dockerfile
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          missing=0
+          [ -z "${{ secrets.AZURE_CREDENTIALS }}" ] && { echo "::error::Missing AZURE_CREDENTIALS"; missing=1; }
+          [ -z "${{ secrets.ACR_NAME }}" ] && { echo "::error::Missing ACR_NAME"; missing=1; }
+          exit $missing
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build image (context = repo root)
+        run: |
+          docker build -f $DOCKERFILE \
+            -t ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }} \
+            -t ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:latest .
+
+      - name: Smoke-test the image
+        run: |
+          docker run -d --rm --name smoke -p 8501:8501 \
+            ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          sleep 8
+          curl -f http://localhost:8501/_stcore/health
+          docker stop smoke
+
+      - name: Push image to ACR
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:latest
+
+      - name: Deploy commit-hash image to Container Apps
+        run: |
+          az containerapp update --name $APP_NAME --resource-group $RESOURCE_GROUP \
+            --image ${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+
+      - name: Health check (public)
+        run: |
+          FQDN=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Deployed to: https://$FQDN"
+          sleep 20
+          curl -f "https://$FQDN/_stcore/health"

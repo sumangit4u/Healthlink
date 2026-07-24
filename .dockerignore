@@ -1,0 +1,67 @@
+# Build context is the repo root (HealthLink/). Keep it small: only shared/ and
+# services/ are ever COPYed into images - exclude everything else.
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Environment files (secrets are injected at runtime, never baked in)
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Testing / tooling caches
+.pytest_cache/
+.ruff_cache/
+.benchmarks/
+.coverage
+htmlcov/
+
+# Logs & local databases
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Git
+.git/
+.gitignore
+
+# Docs (large binaries especially)
+*.md
+*.docx
+
+# CI/CD & deploy scripts (not needed inside images)
+.github/
+deploy.sh
+deploy.ps1
+teardown.sh
+teardown.ps1
+docker-compose.yml
+
+# (The legacy monolith now lives in ../HealthLink_legacy, outside this build
+# context, so it no longer needs to be excluded here.)
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak

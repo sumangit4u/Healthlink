@@ -1,0 +1,4 @@
+# streamlit frontend - only an HTTP client to the api-gateway.
+streamlit==1.30.0
+requests==2.31.0
+plotly==5.18.0

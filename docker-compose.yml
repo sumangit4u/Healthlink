@@ -1,0 +1,127 @@
+# ============================================================================
+# HealthLink - 7 microservices, one per layer (local development)
+# ============================================================================
+#
+#   browser -> streamlit:8501 -> api-gateway:8000 -> orchestrator:8001
+#                                                       |-> symptom-agent:8010  (Gemini + Pinecone)
+#                                                       |-> doctor-agent:8011    (Gemini + SQLite)
+#                                                       |-> scheduling-agent:8012 (Gemini)
+#                                                       |-> summary-agent:8013    (Gemini)
+#
+# Inside this compose network, services address each other BY SERVICE NAME
+# (http://orchestrator:8001) - Docker DNS handles it. Every image is built from
+# the repo root so the shared/ contract package can be copied in.
+#
+# Secrets (GEMINI_API_KEY / PINECONE_API_KEY) are read from the shared project
+# .env; keys stay OUT of images and this file. The config layer also accepts the
+# legacy GEMINI_API_KEY_Orig name.
+#
+# Run:   docker compose up --build
+# Test:  curl http://localhost:8000/api/v1/health   (gateway probes downstream)
+# UI:    http://localhost:8501
+# Failure-isolation demo:  docker compose stop summary-agent
+#        (gateway stays up; orchestrator reports summary degraded)
+
+x-agent-secrets: &agent-secrets
+  env_file:
+    - "../../Module 2 - RAG/.env"
+
+services:
+  streamlit:
+    build:
+      context: .
+      dockerfile: services/streamlit/Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api-gateway:8000/api/v1
+    depends_on:
+      - api-gateway
+    networks:
+      - healthlink
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api_gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:8001
+      - DOCTOR_AGENT_URL=http://doctor-agent:8011
+      - CORS_ORIGINS=*
+    depends_on:
+      - orchestrator
+      - doctor-agent
+    networks:
+      - healthlink
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - SYMPTOM_AGENT_URL=http://symptom-agent:8010
+      - DOCTOR_AGENT_URL=http://doctor-agent:8011
+      - SCHEDULING_AGENT_URL=http://scheduling-agent:8012
+      - SUMMARY_AGENT_URL=http://summary-agent:8013
+    depends_on:
+      - symptom-agent
+      - doctor-agent
+      - scheduling-agent
+      - summary-agent
+    networks:
+      - healthlink
+
+  symptom-agent:
+    build:
+      context: .
+      dockerfile: services/symptom_agent/Dockerfile
+    ports:
+      - "8010:8010"
+    <<: *agent-secrets
+    networks:
+      - healthlink
+
+  doctor-agent:
+    build:
+      context: .
+      dockerfile: services/doctor_agent/Dockerfile
+    ports:
+      - "8011:8011"
+    environment:
+      - DATABASE_URL=sqlite:////app/dbdata/healthlink.db
+    env_file:
+      - "../../Module 2 - RAG/.env"
+    volumes:
+      - doctordb_data:/app/dbdata
+    networks:
+      - healthlink
+
+  scheduling-agent:
+    build:
+      context: .
+      dockerfile: services/scheduling_agent/Dockerfile
+    ports:
+      - "8012:8012"
+    <<: *agent-secrets
+    networks:
+      - healthlink
+
+  summary-agent:
+    build:
+      context: .
+      dockerfile: services/summary_agent/Dockerfile
+    ports:
+      - "8013:8013"
+    <<: *agent-secrets
+    networks:
+      - healthlink
+
+networks:
+  healthlink:
+
+volumes:
+  doctordb_data:
