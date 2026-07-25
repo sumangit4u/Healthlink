@@ -87,6 +87,39 @@ Agent request/response bodies are the Pydantic models in [shared/schemas.py](sha
 
 ---
 
+## Data
+
+There is **no central `data/` folder and no external data store to provision**. Each dataset is
+**bundled into the one service that owns it**, so every image is self-contained and the
+services stay independently deployable.
+
+| Dataset | File (in the repo) | Owned by | Loaded into | Used for |
+|---------|--------------------|----------|-------------|----------|
+| **Doctors** | [services/doctor_agent/data/doctors.csv](services/doctor_agent/data/doctors.csv) — **100 doctors, 30 specialties** | doctor-agent | **SQLite** (seeded on startup) | matching & ranking doctors |
+| **Symptom knowledge base** | [services/symptom_agent/data/symptoms_kb.json](services/symptom_agent/data/symptoms_kb.json) — **200 entries** | symptom-agent | **Pinecone** (Gemini embeddings) | RAG context for symptom analysis |
+
+**Doctors (`doctors.csv`).** Columns: `name, specialty, experience_years, rating, availability,
+location, email, phone, qualifications, languages, consultation_type`. On startup the
+doctor-agent runs `seed_doctors()` — it creates the tables and loads the CSV **only if the
+table is empty** (idempotent), then serves `/recommend`, `/doctors`, `/doctors/{id}`,
+`/specialties`. Locally the SQLite file lives on the `doctordb_data` volume
+(`/app/dbdata/healthlink.db`); for production set `DATABASE_URL` to Azure Database for
+PostgreSQL — no code change.
+
+**Symptom KB (`symptoms_kb.json`).** A list of 200 records (`symptom`, `category`, `specialty`,
+`urgency`, `description`, `common_causes`, `red_flags`, `recommended_actions`, …). It is chunked,
+embedded with Gemini, and upserted into the Pinecone index. Because **Pinecone persists across
+restarts, indexing only needs to happen once** — run the symptom-agent with
+`LOAD_KB_ON_STARTUP=true` (the file is baked into the image) to seed/refresh the index;
+otherwise the agent just queries whatever is already there.
+
+**Runtime-generated data** (never committed — see [.gitignore](.gitignore)): the SQLite
+`healthlink.db` file and its tables (`doctors`, `appointments`, `session_logs`) are created at
+run time; the Pinecone index lives in your Pinecone account.
+
+
+---
+
 ## Demo — how the agents talk to each other
 
 A single `/assess` call fans out across the whole system. The **orchestrator** is the
@@ -308,13 +341,7 @@ HealthLink/
 ├── .github/workflows/      # 01-ci + 7 per-service deploy pipelines
 └── .dockerignore           # repo-root build context, kept small
 
-# The original single-container monolith lives in ../HealthLink_legacy/
-# (main.py, api/, core/, agents/, config/, ui/, utils/, tests/, Dockerfile, ...).
 ```
-
-> The original single-container monolith was moved to **`../HealthLink_legacy/`** (a sibling
-> folder under `module4_deployment/`) as the source these services were extracted from. It is
-> no longer built or deployed and can be deleted once you're happy with the microservices.
 
 ---
 
