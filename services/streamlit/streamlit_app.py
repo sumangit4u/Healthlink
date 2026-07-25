@@ -64,7 +64,7 @@ st.markdown("""
 def check_api_health():
     """Check if API is available."""
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_BASE_URL}/health", timeout=10)
         return response.status_code == 200
     except:
         return False
@@ -209,8 +209,11 @@ def main():
 
     # Check API health
     if not check_api_health():
-        st.error("⚠️ Cannot connect to HealthLink API. Please ensure the backend server is running.")
-        st.info("Start the backend server with: `python main.py`")
+        st.error("⚠️ Cannot reach the HealthLink API gateway right now.")
+        st.info(
+            f"The UI is calling `{API_BASE_URL}`. If a service just started it may be "
+            "cold-starting — wait a few seconds and refresh. Locally, run `docker compose up`."
+        )
         return
 
     # Sidebar

@@ -61,7 +61,7 @@ def root():
 def health():
     orchestrator = "unreachable"
     try:
-        with httpx.Client(timeout=5) as client:
+        with httpx.Client(timeout=15) as client:
             r = client.get(f"{ORCHESTRATOR_URL}/health")
             if r.status_code == 200:
                 orchestrator = "healthy"

@@ -55,7 +55,7 @@ def _post(client: httpx.Client, url: str, path: str, payload: dict) -> dict:
 @app.get("/health", response_model=HealthCheckResponse)
 def health():
     services = {}
-    with httpx.Client(timeout=5) as client:
+    with httpx.Client(timeout=15) as client:
         for name, url in (
             ("symptom-agent", SYMPTOM_AGENT_URL),
             ("doctor-agent", DOCTOR_AGENT_URL),

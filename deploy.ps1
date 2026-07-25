@@ -14,7 +14,11 @@
 $ErrorActionPreference = "Stop"
 $ScriptDir = $PSScriptRoot
 
-# ---- Config (cheap by design - scale-to-zero everywhere) ----
+# ---- Config ----
+# min-replicas=1 keeps the internal chain warm so health probes never hit a
+# cold-starting container (heavy langchain imports take several seconds). To
+# minimise cost instead, set the --min-replicas below to 0 and accept a slow,
+# occasionally "degraded"-looking first request after idle.
 $ResourceGroup = "healthlink-rg"
 $Location      = "centralindia"
 $AcrName       = "healthlinkacr$(Get-Random -Maximum 99999)"
@@ -89,7 +93,7 @@ function New-Agent($app, $image, $port) {
         --image "$AcrServer/$image" `
         --registry-server $AcrServer --registry-username $AcrUser --registry-password $AcrPass `
         --target-port $port --ingress internal `
-        --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
+        --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
         --secrets "gemini-api-key=$GeminiKey" "pinecone-api-key=$PineconeKey" `
         --env-vars "GEMINI_API_KEY=secretref:gemini-api-key" "PINECONE_API_KEY=secretref:pinecone-api-key" `
         --only-show-errors | Out-Null
@@ -106,7 +110,7 @@ az containerapp create `
     --image "$AcrServer/healthlink-orchestrator:latest" `
     --registry-server $AcrServer --registry-username $AcrUser --registry-password $AcrPass `
     --target-port $OrchPort --ingress internal `
-    --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
+    --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
     --env-vars "SYMPTOM_AGENT_URL=http://$SymptomApp" "DOCTOR_AGENT_URL=http://$DoctorApp" "SCHEDULING_AGENT_URL=http://$SchedulingApp" "SUMMARY_AGENT_URL=http://$SummaryApp" `
     --only-show-errors | Out-Null
 
@@ -116,7 +120,7 @@ az containerapp create `
     --image "$AcrServer/healthlink-api:latest" `
     --registry-server $AcrServer --registry-username $AcrUser --registry-password $AcrPass `
     --target-port $ApiPort --ingress external `
-    --min-replicas 0 --max-replicas 5 --cpu 0.5 --memory 1.0Gi `
+    --min-replicas 1 --max-replicas 5 --cpu 0.5 --memory 1.0Gi `
     --env-vars "ORCHESTRATOR_URL=http://$OrchApp" "DOCTOR_AGENT_URL=http://$DoctorApp" "CORS_ORIGINS=*" `
     --only-show-errors | Out-Null
 
@@ -127,7 +131,7 @@ az containerapp create `
     --image "$AcrServer/healthlink-streamlit:latest" `
     --registry-server $AcrServer --registry-username $AcrUser --registry-password $AcrPass `
     --target-port $StreamlitPort --ingress external `
-    --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
+    --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi `
     --env-vars "API_BASE_URL=https://$ApiFqdn/api/v1" `
     --only-show-errors | Out-Null
 

@@ -19,7 +19,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ---- Config (cheap by design - scale-to-zero everywhere) ----
+# ---- Config ----
+# min-replicas=1 keeps the internal chain warm so health probes never hit a
+# cold-starting container (heavy langchain imports take several seconds). To
+# minimise cost instead, set the --min-replicas below to 0 and accept a slow,
+# occasionally "degraded"-looking first request after idle.
 RESOURCE_GROUP="healthlink-rg"
 LOCATION="centralindia"                 # pick a region near your users
 ACR_NAME="healthlinkacr$RANDOM"         # must be globally unique
@@ -100,7 +104,7 @@ create_agent() {
         --image "$ACR_SERVER/$image" \
         --registry-server "$ACR_SERVER" --registry-username "$ACR_USER" --registry-password "$ACR_PASS" \
         --target-port "$port" --ingress internal \
-        --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
+        --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
         --secrets "gemini-api-key=$GEMINI_KEY" "pinecone-api-key=$PINECONE_KEY" \
         --env-vars "GEMINI_API_KEY=secretref:gemini-api-key" "PINECONE_API_KEY=secretref:pinecone-api-key" "$@" \
         --only-show-errors >/dev/null
@@ -117,7 +121,7 @@ az containerapp create \
     --image "$ACR_SERVER/healthlink-orchestrator:latest" \
     --registry-server "$ACR_SERVER" --registry-username "$ACR_USER" --registry-password "$ACR_PASS" \
     --target-port "$ORCH_PORT" --ingress internal \
-    --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
+    --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
     --env-vars \
         "SYMPTOM_AGENT_URL=http://$SYMPTOM_APP" \
         "DOCTOR_AGENT_URL=http://$DOCTOR_APP" \
@@ -131,7 +135,7 @@ az containerapp create \
     --image "$ACR_SERVER/healthlink-api:latest" \
     --registry-server "$ACR_SERVER" --registry-username "$ACR_USER" --registry-password "$ACR_PASS" \
     --target-port "$API_PORT" --ingress external \
-    --min-replicas 0 --max-replicas 5 --cpu 0.5 --memory 1.0Gi \
+    --min-replicas 1 --max-replicas 5 --cpu 0.5 --memory 1.0Gi \
     --env-vars "ORCHESTRATOR_URL=http://$ORCH_APP" "DOCTOR_AGENT_URL=http://$DOCTOR_APP" "CORS_ORIGINS=*" \
     --only-show-errors >/dev/null
 
@@ -143,7 +147,7 @@ az containerapp create \
     --image "$ACR_SERVER/healthlink-streamlit:latest" \
     --registry-server "$ACR_SERVER" --registry-username "$ACR_USER" --registry-password "$ACR_PASS" \
     --target-port "$STREAMLIT_PORT" --ingress external \
-    --min-replicas 0 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
+    --min-replicas 1 --max-replicas 3 --cpu 0.5 --memory 1.0Gi \
     --env-vars "API_BASE_URL=https://$API_FQDN/api/v1" \
     --only-show-errors >/dev/null
 
